@@ -1,6 +1,6 @@
 /**
  * DBStackAI — Backend API
- * Stack: Node.js + Express + Supabase (Postgres) + Stripe + Anthropic
+ * Stack: Node.js + Express + Supabase (Postgres) + Razorpay + Anthropic
  * 
  * Install: npm install
  * Run:     npm start
@@ -12,7 +12,8 @@ const bcrypt        = require('bcryptjs');
 const jwt           = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
 const Anthropic     = require('@anthropic-ai/sdk');
-const Stripe        = require('stripe');
+const Razorpay      = require('razorpay');
+const crypto        = require('crypto');
 const rateLimit     = require('express-rate-limit');
 require('dotenv').config();
 
@@ -23,6 +24,10 @@ app.use(express.json());
 // ── Clients ──────────────────────────────────────────────────────────────────
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+const razorpay  = new Razorpay({
+  key_id:     process.env.RAZORPAY_KEY_ID     || 'placeholder',
+  key_secret: process.env.RAZORPAY_KEY_SECRET || 'placeholder'
+});
 const razorpay  = new Razorpay({
   key_id:     process.env.RAZORPAY_KEY_ID,
   key_secret: process.env.RAZORPAY_KEY_SECRET
