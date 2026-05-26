@@ -1,7 +1,7 @@
 {
   "name": "dbstackai-backend",
-  "version": "1.0.0",
-  "description": "DBStackAI API",
+  "version": "4.0.0",
+  "description": "DBStackAI API — Expert AI for DBAs & DevOps",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
