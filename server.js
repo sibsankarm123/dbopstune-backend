@@ -12,6 +12,7 @@ const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 
 const app = express();
+app.set('trust proxy', 1);  // Trust Railway's proxy
 app.use(cors({ origin: '*' }));
 app.use(express.json());
 
@@ -171,7 +172,7 @@ STRICT RULES:
 - Always recommend production-safe, best-practice approaches.`;
 
     const completion = await anthropic.messages.create({
-      model: 'claude-sonnet-4-20250514',
+      model: 'claude-haiku-4-5-20251001',
       max_tokens: 1000,
       system: SYSTEM,
       messages: [...history.slice(-10), { role: 'user', content: message }]
@@ -184,7 +185,7 @@ STRICT RULES:
     if (qlog) {
       await supabase.from('query_logs').update({
         response_tokens: tokens, response_length: answer.length,
-        model_used: 'claude-sonnet-4-20250514'
+        model_used: 'claude-haiku-4-5-20251001'
       }).eq('id', qlog.id);
     }
 
