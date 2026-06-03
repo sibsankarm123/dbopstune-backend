@@ -1,13 +1,11 @@
 {
   "name": "dbstackai-backend",
   "version": "4.0.0",
-  "description": "DBStackAI API — Expert AI for DBAs & DevOps",
+  "description": "DBStackAI API",
   "main": "server.js",
-  "scripts": {
-    "start": "node server.js"
-  },
+  "scripts": { "start": "node server.js" },
   "dependencies": {
-    "@anthropic-ai/sdk": "^0.24.0",
+    "@google/generative-ai": "^0.21.0",
     "@supabase/supabase-js": "^2.43.0",
     "bcryptjs": "^2.4.3",
     "cors": "^2.8.5",
@@ -16,7 +14,5 @@
     "express-rate-limit": "^7.3.1",
     "jsonwebtoken": "^9.0.2"
   },
-  "engines": {
-    "node": ">=18.0.0"
-  }
+  "engines": { "node": ">=18.0.0" }
 }
