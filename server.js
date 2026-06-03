@@ -205,7 +205,7 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
 - Start answers with a one-line direct answer, then details.`;
 
     const model = genai.getGenerativeModel({
-      model: 'gemini-1.5-flash',
+      model: 'gemini-2.0-flash',
       systemInstruction: SYSTEM
     });
     const chatHistory = history.slice(-10).map(m => ({
@@ -221,7 +221,7 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
     if (qlog) {
       await supabase.from('query_logs').update({
         response_tokens: tokens, response_length: answer.length,
-        model_used: 'gemini-1.5-flash'
+        model_used: 'gemini-2.0-flash'
       }).eq('id', qlog.id);
     }
 
