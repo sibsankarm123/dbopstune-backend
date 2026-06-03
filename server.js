@@ -10,6 +10,19 @@ const { createClient } = require('@supabase/supabase-js');
 const { GoogleGenerativeAI } = require('@google/generative-ai');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
+const Razorpay = require('razorpay');
+const crypto   = require('crypto');
+
+const razorpay = new Razorpay({
+  key_id:     process.env.RAZORPAY_KEY_ID,
+  key_secret: process.env.RAZORPAY_KEY_SECRET
+});
+
+const PLANS = {
+  pro_monthly:  { amount: 49900,  currency: 'INR', label: 'Pro Monthly',  period: 'monthly' },
+  pro_yearly:   { amount: 399900, currency: 'INR', label: 'Pro Yearly',   period: 'yearly'  },
+  team_monthly: { amount: 199900, currency: 'INR', label: 'Team Monthly', period: 'monthly' },
+};
 
 const app = express();
 app.set('trust proxy', 1);  // Trust Railway's proxy
@@ -191,15 +204,18 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
 - Always recommend production-safe, best-practice approaches.
 - Start answers with a one-line direct answer, then details.`;
 
-    const completion = await anthropic.messages.create({
-      model: 'claude-haiku-4-5-20251001',
-      max_tokens: 1000,
-      system: SYSTEM,
-      messages: [...history.slice(-10), { role: 'user', content: message }]
+    const model = genai.getGenerativeModel({
+      model: 'gemini-1.5-flash',
+      systemInstruction: SYSTEM
     });
-
-    const answer = completion.content[0]?.text || 'No response generated.';
-    const tokens = (completion.usage?.input_tokens || 0) + (completion.usage?.output_tokens || 0);
+    const chatHistory = history.slice(-10).map(m => ({
+      role: m.role === 'assistant' ? 'model' : 'user',
+      parts: [{ text: m.content }]
+    }));
+    const chat = model.startChat({ history: chatHistory });
+    const result = await chat.sendMessage(message);
+    const answer = result.response.text() || 'No response generated.';
+    const tokens = Math.round((SYSTEM.length + message.length) / 4);
 
     // Update log
     if (qlog) {
@@ -309,6 +325,94 @@ app.delete('/api/admin/users/:id', auth, adminOnly, async (req, res) => {
 });
 
 // Health
+
+// ── CREATE ORDER ─────────────────────────────────────────────────────
+app.post('/api/payment/create-order', auth, async (req, res) => {
+  try {
+    const { plan_id } = req.body;
+    const plan = PLANS[plan_id];
+    if (!plan) return res.status(400).json({ error: 'Invalid plan' });
+    const order = await razorpay.orders.create({
+      amount: plan.amount, currency: plan.currency,
+      receipt: 'rcpt_' + req.user.id + '_' + Date.now(),
+      notes: { user_id: req.user.id, user_email: req.user.email, plan_id }
+    });
+    res.json({
+      order_id: order.id, amount: order.amount, currency: order.currency,
+      plan_label: plan.label, key_id: process.env.RAZORPAY_KEY_ID
+    });
+  } catch(e) { console.error('Order error:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── VERIFY & ACTIVATE ────────────────────────────────────────────────
+app.post('/api/payment/verify', auth, async (req, res) => {
+  try {
+    const { razorpay_order_id, razorpay_payment_id, razorpay_signature, plan_id } = req.body;
+    if (!razorpay_order_id || !razorpay_payment_id || !razorpay_signature || !plan_id)
+      return res.status(400).json({ error: 'Missing payment fields' });
+
+    // Verify signature — CRITICAL, never skip
+    const expected = crypto
+      .createHmac('sha256', process.env.RAZORPAY_KEY_SECRET)
+      .update(razorpay_order_id + '|' + razorpay_payment_id)
+      .digest('hex');
+    if (expected !== razorpay_signature)
+      return res.status(400).json({ error: 'Payment signature invalid' });
+
+    const plan = PLANS[plan_id];
+    const now  = new Date();
+    const expires = new Date(now);
+    if (plan.period === 'monthly') expires.setMonth(expires.getMonth() + 1);
+    if (plan.period === 'yearly')  expires.setFullYear(expires.getFullYear() + 1);
+    const planName = plan_id.startsWith('team') ? 'team' : 'pro';
+
+    const { data: user, error } = await supabase.from('users')
+      .update({
+        plan: planName, plan_expires_at: expires.toISOString(),
+        razorpay_order_id, razorpay_payment_id, free_queries_used: 0
+      })
+      .eq('id', req.user.id).select().single();
+    if (error) return res.status(500).json({ error: error.message });
+
+    await supabase.from('payment_logs').insert({
+      user_id: req.user.id, user_email: req.user.email,
+      plan_id, plan_name: planName, amount: plan.amount, currency: plan.currency,
+      razorpay_order_id, razorpay_payment_id, status: 'success',
+      created_at: now.toISOString()
+    });
+
+    const token = require('jsonwebtoken').sign(
+      { id: user.id, email: user.email, role: user.role, plan: planName },
+      process.env.JWT_SECRET, { expiresIn: '7d' }
+    );
+    res.json({
+      success: true, plan: planName,
+      expires_at: expires.toISOString(), token,
+      message: 'Welcome to DBStackAI ' + planName.charAt(0).toUpperCase() + planName.slice(1) + '!'
+    });
+  } catch(e) { console.error('Verify error:', e.message); res.status(500).json({ error: e.message }); }
+});
+
+// ── PLANS (public) ───────────────────────────────────────────────────
+app.get('/api/plans', (req, res) => {
+  res.json(Object.entries(PLANS).map(([id, p]) => ({
+    id, label: p.label, amount: p.amount, currency: p.currency, period: p.period,
+    display: '₹' + (p.amount / 100).toLocaleString('en-IN') + '/' + (p.period === 'monthly' ? 'mo' : 'yr')
+  })));
+});
+
+// ── ADMIN: PAYMENT LOGS ──────────────────────────────────────────────
+app.get('/api/admin/payments', auth, adminOnly, async (req, res) => {
+  try {
+    const page = parseInt(req.query.page) || 1, limit = 25;
+    const { data, count } = await supabase.from('payment_logs')
+      .select('*', { count: 'exact' })
+      .order('created_at', { ascending: false })
+      .range((page - 1) * limit, page * limit - 1);
+    res.json({ payments: data || [], total: count || 0, page, pages: Math.ceil((count || 0) / limit) });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
 
 const PORT = process.env.PORT || 4000;
