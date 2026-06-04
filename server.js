@@ -1,13 +1,13 @@
 /**
  * DBStackAI — Backend API v4 (Clean, no payment)
- * Stack: Node.js + Express + Supabase + Anthropic
+ * Stack: Node.js + Express + Supabase + Groq (Llama 3.3)
  */
 const express   = require('express');
 const cors      = require('cors');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
-const { GoogleGenerativeAI } = require('@google/generative-ai');
+const Groq = require('groq-sdk');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const Razorpay = require('razorpay');
@@ -31,7 +31,7 @@ app.use(express.json());
 
 // ── Clients ───────────────────────────────────────────────────────────
 const supabase  = createClient(process.env.SUPABASE_URL, process.env.SUPABASE_SERVICE_KEY);
-const genai = new GoogleGenerativeAI(process.env.GEMINI_API_KEY);
+const groq = new Groq({ apiKey: process.env.GROQ_API_KEY });
 
 // ── Rate limiting ─────────────────────────────────────────────────────
 const authLimit = rateLimit({ windowMs: 15 * 60 * 1000, max: 20 });
@@ -204,24 +204,23 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
 - Always recommend production-safe, best-practice approaches.
 - Start answers with a one-line direct answer, then details.`;
 
-    const model = genai.getGenerativeModel({
-      model: 'gemini-2.0-flash',
-      systemInstruction: SYSTEM
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 1000,
+      messages: [
+        { role: 'system', content: SYSTEM },
+        ...history.slice(-10),
+        { role: 'user', content: message }
+      ]
     });
-    const chatHistory = history.slice(-10).map(m => ({
-      role: m.role === 'assistant' ? 'model' : 'user',
-      parts: [{ text: m.content }]
-    }));
-    const chat = model.startChat({ history: chatHistory });
-    const result = await chat.sendMessage(message);
-    const answer = result.response.text() || 'No response generated.';
-    const tokens = Math.round((SYSTEM.length + message.length) / 4);
+    const answer = completion.choices[0]?.message?.content || 'No response generated.';
+    const tokens = (completion.usage?.prompt_tokens || 0) + (completion.usage?.completion_tokens || 0);
 
     // Update log
     if (qlog) {
       await supabase.from('query_logs').update({
         response_tokens: tokens, response_length: answer.length,
-        model_used: 'gemini-2.0-flash'
+        model_used: 'llama-3.3-70b-versatile'
       }).eq('id', qlog.id);
     }
 
