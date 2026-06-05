@@ -19,9 +19,10 @@ const razorpay = new Razorpay({
 });
 
 const PLANS = {
-  pro_monthly:  { amount: 49900,  currency: 'INR', label: 'Pro Monthly',  period: 'monthly' },
-  pro_yearly:   { amount: 399900, currency: 'INR', label: 'Pro Yearly',   period: 'yearly'  },
-  team_monthly: { amount: 199900, currency: 'INR', label: 'Team Monthly', period: 'monthly' },
+  pro_monthly:      { amount: 19900,  currency: 'INR', label: 'Pro',              period: 'monthly', plan_name: 'pro'      },
+  advanced_monthly: { amount: 49900,  currency: 'INR', label: 'Advanced',         period: 'monthly', plan_name: 'advanced' },
+  pro_yearly:       { amount: 149900, currency: 'INR', label: 'Pro Yearly',       period: 'yearly',  plan_name: 'pro'      },
+  advanced_yearly:  { amount: 399900, currency: 'INR', label: 'Advanced Yearly',  period: 'yearly',  plan_name: 'advanced' },
 };
 
 const app = express();
@@ -149,9 +150,10 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
 
     const { data: user } = await supabase.from('users').select('*').eq('id', req.user.id).single();
 
-    if (user.plan === 'free' && user.free_queries_used >= 3) {
-      return res.status(402).json({ error: 'Free limit reached', code: 'UPGRADE_REQUIRED' });
-    }
+    // Only free plan has a usage limit (3 trial questions total)
+    if (user.plan === 'free' && user.free_queries_used >= 3)
+      return res.status(402).json({ error: 'Free trial limit reached. Upgrade to Pro for unlimited AI chat.', code: 'UPGRADE_REQUIRED' });
+    // Pro and Advanced = fully unlimited, no daily limits
 
     const topic_detected = topic || detectTopic(message);
     const on_topic = isOnTopic(message);
@@ -363,7 +365,7 @@ app.post('/api/payment/verify', auth, async (req, res) => {
     const expires = new Date(now);
     if (plan.period === 'monthly') expires.setMonth(expires.getMonth() + 1);
     if (plan.period === 'yearly')  expires.setFullYear(expires.getFullYear() + 1);
-    const planName = plan_id.startsWith('team') ? 'team' : 'pro';
+    const planName = PLANS[plan_id] ? PLANS[plan_id].plan_name : 'pro';
 
     const { data: user, error } = await supabase.from('users')
       .update({
@@ -395,8 +397,13 @@ app.post('/api/payment/verify', auth, async (req, res) => {
 // ── PLANS (public) ───────────────────────────────────────────────────
 app.get('/api/plans', (req, res) => {
   res.json(Object.entries(PLANS).map(([id, p]) => ({
-    id, label: p.label, amount: p.amount, currency: p.currency, period: p.period,
-    display: '₹' + (p.amount / 100).toLocaleString('en-IN') + '/' + (p.period === 'monthly' ? 'mo' : 'yr')
+    id,
+    label:     p.label,
+    amount:    p.amount,
+    currency:  p.currency,
+    period:    p.period,
+    plan_name: p.plan_name,
+    display:   '₹' + (p.amount / 100).toLocaleString('en-IN') + '/' + (p.period === 'monthly' ? 'mo' : 'yr')
   })));
 });
 
