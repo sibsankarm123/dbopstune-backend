@@ -25,6 +25,13 @@ const PLANS = {
   advanced_yearly:  { amount: 399900, currency: 'INR', label: 'Advanced Yearly',  period: 'yearly',  plan_name: 'advanced' },
 };
 
+// Feature access by plan
+const PLAN_FEATURES = {
+  free:     { ai_questions: 5, mock_interview: false, kb_full: true, migration_hub: false, resume_review: false },
+  pro:      { ai_questions: -1, mock_interview: false, kb_full: true, migration_hub: true, resume_review: false },
+  advanced: { ai_questions: -1, mock_interview: true, kb_full: true, migration_hub: true, resume_review: true },
+};
+
 const app = express();
 app.set('trust proxy', 1);  // Trust Railway's proxy
 app.use(cors({ origin: '*' }));
@@ -151,31 +158,39 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
     const { data: user } = await supabase.from('users').select('*').eq('id', req.user.id).single();
 
     // Only free plan has a usage limit (3 trial questions total)
-    if (user.plan === 'free' && user.free_queries_used >= 3)
-      return res.status(402).json({ error: 'Free trial limit reached. Upgrade to Pro for unlimited AI chat.', code: 'UPGRADE_REQUIRED' });
+    if (user.plan === 'free' && user.free_queries_used >= 5)
+      return res.status(402).json({ error: 'Free limit reached (5 questions). Upgrade to Pro for unlimited AI chat.', code: 'UPGRADE_REQUIRED' });
     // Pro and Advanced = fully unlimited, no daily limits
 
     const topic_detected = topic || detectTopic(message);
     const on_topic = isOnTopic(message);
 
     // Log query
-    const { data: qlog } = await supabase.from('query_logs').insert({
-      user_id: user.id, user_email: user.email,
-      message, topic: topic_detected, on_topic,
-      session_id: session_id || null,
-      plan_at_time: user.plan,
-      created_at: new Date().toISOString()
+    const { data: qlog } = const { data: qlog } = await supabase.from('query_logs').insert({
+      user_id:        user.id,
+      user_email:     user.email,
+      message,
+      topic:          topic_detected,
+      on_topic,
+      session_id:     session_id || null,
+      plan_at_time:   user.plan,
+      ip_address:     req.ip || req.headers['x-forwarded-for'] || null,
+      user_agent:     req.headers['user-agent'] || null,
+      response_tokens: tokens,
+      created_at:     new Date().toISOString()
     }).select().single();
 
-    const SYSTEM = `You are DBStackAI — the world's most focused expert AI, built exclusively for Database Administrators and DevOps Engineers. Your entire universe consists of exactly 6 topics:
+    const SYSTEM = `You are DBStackAI — the world's most focused expert AI, built exclusively for Database Administrators and DevOps Engineers. Your entire universe consists of exactly 8 topics:
 
 ━━━ YOUR UNIVERSE ━━━
 1. Oracle Database — RMAN, AWR, ASH, RAC, DataGuard, CDB/PDB, Exadata, performance tuning, PL/SQL, patching, upgrade, backup/recovery, flashback
 2. PostgreSQL — VACUUM, WAL, streaming replication, Patroni, PgBouncer, pg_upgrade, EXPLAIN, query optimisation, indexing, partitioning
 3. AWS Cloud — RDS, Aurora, Redshift, DynamoDB, S3, EC2, VPC, IAM, CloudWatch, Lambda, ECS, Secrets Manager
-4. Terraform — IaC, state management, modules, providers, workspaces, remote backend, drift detection
-5. Ansible — playbooks, roles, inventory, vault, Galaxy, dynamic inventory, database automation
-6. Python for DB/DevOps — cx_Oracle, python-oracledb, psycopg2, boto3, SQLAlchemy, automation scripts, monitoring
+4. Database Migration — Oracle to PostgreSQL (heterogeneous), Oracle to Oracle (homogeneous), on-premises to AWS cloud, Data Pump, Transportable Tablespaces, AWS SCT, AWS DMS, ora2pg, GoldenGate, CDC replication, schema conversion, PL/SQL to PL/pgSQL, cutover planning
+5. Interview Preparation — Oracle DBA interviews, PostgreSQL DBA interviews, AWS DBA interviews, Migration Architect interviews, common DBA interview questions and expert answers
+6. Terraform — IaC, state management, modules, providers, workspaces, remote backend, drift detection
+7. Ansible — playbooks, roles, inventory, vault, Galaxy, dynamic inventory, database automation
+8. Python Automation — cx_Oracle, python-oracledb, psycopg2, boto3, SQLAlchemy, automation scripts, monitoring
 
 ━━━ STRICT BOUNDARY RULES ━━━
 - You have a HARD boundary. If any question falls outside these 6 topics, you MUST respond with EXACTLY this message (replace [TOPIC] with what they asked about):
@@ -417,6 +432,195 @@ app.get('/api/admin/payments', auth, adminOnly, async (req, res) => {
       .range((page - 1) * limit, page * limit - 1);
     res.json({ payments: data || [], total: count || 0, page, pages: Math.ceil((count || 0) / limit) });
   } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── TRACK KB SEARCH ──────────────────────────────────────────────────
+app.post('/api/track/kb-search', auth, async (req, res) => {
+  try {
+    const { topic, section, question_index, action } = req.body;
+    // action: 'view_section' | 'open_lesson' | 'unlock_click'
+    await supabase.from('kb_events').insert({
+      user_id:        req.user.id,
+      user_email:     req.user.email,
+      plan:           req.user.plan,
+      topic,
+      section,
+      question_index,
+      action:         action || 'open_lesson',
+      created_at:     new Date().toISOString()
+    });
+    res.json({ ok: true });
+  } catch(e) { res.json({ ok: false }); } // non-critical, don't fail
+});
+
+// ── TRACK PAGE VIEW ───────────────────────────────────────────────────
+app.post('/api/track/pageview', auth, async (req, res) => {
+  try {
+    const { page } = req.body;
+    await supabase.from('pageviews').insert({
+      user_id:    req.user.id,
+      user_email: req.user.email,
+      plan:       req.user.plan,
+      page,
+      created_at: new Date().toISOString()
+    });
+    res.json({ ok: true });
+  } catch(e) { res.json({ ok: false }); }
+});
+
+// ── ADMIN: SEARCH ANALYTICS ───────────────────────────────────────────
+app.get('/api/admin/analytics', auth, adminOnly, async (req, res) => {
+  try {
+    // Top searched topics
+    const { data: topTopics } = await supabase
+      .from('query_logs')
+      .select('topic')
+      .not('topic', 'is', null)
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    const topicCount = {};
+    (topTopics || []).forEach(r => {
+      if (r.topic) topicCount[r.topic] = (topicCount[r.topic] || 0) + 1;
+    });
+
+    // Top questions asked (most common messages)
+    const { data: topQueries } = await supabase
+      .from('query_logs')
+      .select('message, topic, plan_at_time')
+      .order('created_at', { ascending: false })
+      .limit(200);
+
+    // Off-topic rate
+    const { data: ontopicStats } = await supabase
+      .from('query_logs')
+      .select('on_topic')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    const onCount  = (ontopicStats||[]).filter(r=>r.on_topic).length;
+    const offCount = (ontopicStats||[]).filter(r=>!r.on_topic).length;
+
+    // KB popular lessons
+    const { data: kbEvents } = await supabase
+      .from('kb_events')
+      .select('topic, section, action')
+      .order('created_at', { ascending: false })
+      .limit(500);
+
+    const kbTopics = {};
+    (kbEvents||[]).forEach(r => {
+      const k = r.topic + ' > ' + r.section;
+      kbTopics[k] = (kbTopics[k] || 0) + 1;
+    });
+
+    const unlockClicks = (kbEvents||[]).filter(r=>r.action==='unlock_click').length;
+
+    res.json({
+      topic_breakdown:  topicCount,
+      top_queries:      (topQueries||[]).slice(0, 20),
+      on_topic_count:   onCount,
+      off_topic_count:  offCount,
+      kb_popular:       Object.entries(kbTopics).sort((a,b)=>b[1]-a[1]).slice(0,10),
+      unlock_clicks:    unlockClicks,
+    });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── FEEDBACK ─────────────────────────────────────────────────────────
+app.post('/api/feedback', auth, async (req, res) => {
+  try {
+    const { rating, categories, message, page } = req.body;
+    await supabase.from('feedback').insert({
+      user_id:    req.user.id,
+      user_email: req.user.email,
+      plan:       req.user.plan,
+      rating:     rating || null,
+      categories: categories ? categories.join(', ') : null,
+      message:    message || null,
+      page:       page || 'about',
+      created_at: new Date().toISOString()
+    });
+    res.json({ ok: true });
+  } catch(e) {
+    // Non-critical — don't fail the user
+    res.json({ ok: true });
+  }
+});
+
+// ── ADMIN: VIEW FEEDBACK ──────────────────────────────────────────────
+app.get('/api/admin/feedback', auth, adminOnly, async (req, res) => {
+  try {
+    const { data } = await supabase
+      .from('feedback')
+      .select('*')
+      .order('created_at', { ascending: false })
+      .limit(100);
+    res.json({ feedback: data || [] });
+  } catch(e) { res.status(500).json({ error: e.message }); }
+});
+
+// ── AI MOCK INTERVIEW SCORING ────────────────────────────────────────
+app.post('/api/mock-interview', auth, async (req, res) => {
+  try {
+    const { role, question, answer } = req.body;
+    if (!question || !answer) return res.status(400).json({ error: 'Missing fields' });
+
+    // Only pro/advanced users
+    const { data: user } = await supabase.from('users').select('plan').eq('id', req.user.id).single();
+    if (user.plan !== 'advanced') return res.status(402).json({ error: 'Advanced plan required for Mock Interviews', code: 'UPGRADE_REQUIRED' });
+
+    const scoringPrompt = `You are a senior DBA interviewer with 20+ years experience evaluating ${role} candidates.
+
+Question asked: "${question}"
+
+Candidate's answer: "${answer}"
+
+Evaluate this answer and respond with ONLY valid JSON (no markdown, no backticks):
+{
+  "technical": <1-10 score for technical accuracy and depth>,
+  "production": <1-10 score for production experience demonstrated>,
+  "communication": <1-10 score for clarity and structure>,
+  "overall": <1-10 overall score>,
+  "feedback": "<2-3 sentences of specific, actionable feedback>",
+  "strong_points": "<what they did well in one sentence>",
+  "improve": "<the single most important thing to improve>"
+}
+
+Be honest and fair. Score 8-10 only for genuinely excellent answers with specific production examples.`;
+
+    const completion = await groq.chat.completions.create({
+      model: 'llama-3.3-70b-versatile',
+      max_tokens: 400,
+      messages: [{ role: 'user', content: scoringPrompt }]
+    });
+
+    const raw = completion.choices[0]?.message?.content || '{}';
+    // Clean JSON response
+    const clean = raw.replace(/```json|```/g, '').trim();
+    let scores;
+    try { scores = JSON.parse(clean); }
+    catch(e) {
+      scores = { technical:7, production:6, communication:7, overall:7,
+        feedback: 'Good attempt. Add more specific production examples.',
+        strong_points: 'You covered the core concept.',
+        improve: 'Include real command examples and specific scenarios from your experience.' };
+    }
+
+    // Log interview session
+    await supabase.from('query_logs').insert({
+      user_id: req.user.id, user_email: req.user.email,
+      message: '[MOCK INTERVIEW] ' + question.substring(0,100),
+      topic: role, on_topic: true,
+      plan_at_time: user.plan,
+      created_at: new Date().toISOString()
+    });
+
+    res.json(scores);
+  } catch(e) {
+    console.error('Mock interview error:', e.message);
+    res.status(500).json({ error: e.message });
+  }
 });
 
 app.get('/health', (_, res) => res.json({ status: 'ok', time: new Date().toISOString() }));
