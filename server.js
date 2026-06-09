@@ -166,7 +166,7 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
     const on_topic = isOnTopic(message);
 
     // Log query
-    const { data: qlog } = const { data: qlog } = await supabase.from('query_logs').insert({
+    const { data: qlog } = await supabase.from('query_logs').insert({
       user_id:        user.id,
       user_email:     user.email,
       message,
