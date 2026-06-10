@@ -176,7 +176,6 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
       plan_at_time:   user.plan,
       ip_address:     req.ip || req.headers['x-forwarded-for'] || null,
       user_agent:     req.headers['user-agent'] || null,
-      response_tokens: tokens,
       created_at:     new Date().toISOString()
     }).select().single();
 
