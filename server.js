@@ -7,7 +7,7 @@ const cors      = require('cors');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
-// const Groq = require('groq-sdk');
+const Groq = require('groq-sdk');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const Razorpay = require('razorpay');
