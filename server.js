@@ -7,7 +7,7 @@ const cors      = require('cors');
 const bcrypt    = require('bcryptjs');
 const jwt       = require('jsonwebtoken');
 const { createClient } = require('@supabase/supabase-js');
-const Groq = require('groq-sdk');
+// const Groq = require('groq-sdk');
 const rateLimit = require('express-rate-limit');
 require('dotenv').config();
 const Razorpay = require('razorpay');
@@ -349,14 +349,18 @@ app.post('/api/payment/create-order', auth, async (req, res) => {
     if (!plan) return res.status(400).json({ error: 'Invalid plan' });
     const order = await razorpay.orders.create({
       amount: plan.amount, currency: plan.currency,
-      receipt: 'rcpt_' + req.user.id + '_' + Date.now(),
+      receipt: ('rc_' + Date.now() + '_' + String(req.user.id).replace(/-/g,'').slice(0, 12)).slice(0, 40),
       notes: { user_id: req.user.id, user_email: req.user.email, plan_id }
     });
     res.json({
       order_id: order.id, amount: order.amount, currency: order.currency,
       plan_label: plan.label, key_id: process.env.RAZORPAY_KEY_ID
     });
-  } catch(e) { console.error('Order error:', e.message); res.status(500).json({ error: e.message }); }
+  } catch(e) {
+    const msg = (e && e.error && e.error.description) || e.message || 'Order creation failed';
+    console.error('Order error:', JSON.stringify(e && e.error || e.message));
+    res.status(500).json({ error: msg });
+  }
 });
 
 // ── VERIFY & ACTIVATE ────────────────────────────────────────────────
@@ -375,6 +379,7 @@ app.post('/api/payment/verify', auth, async (req, res) => {
       return res.status(400).json({ error: 'Payment signature invalid' });
 
     const plan = PLANS[plan_id];
+    if (!plan) return res.status(400).json({ error: 'Invalid plan' });
     const now  = new Date();
     const expires = new Date(now);
     if (plan.period === 'monthly') expires.setMonth(expires.getMonth() + 1);
