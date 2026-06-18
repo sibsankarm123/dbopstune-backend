@@ -570,9 +570,9 @@ app.post('/api/mock-interview', auth, async (req, res) => {
     const { role, question, answer } = req.body;
     if (!question || !answer) return res.status(400).json({ error: 'Missing fields' });
 
-    // Only pro/advanced users
-    const { data: user } = await supabase.from('users').select('plan').eq('id', req.user.id).single();
-    if (user.plan !== 'advanced') return res.status(402).json({ error: 'Advanced plan required for Mock Interviews', code: 'UPGRADE_REQUIRED' });
+    // Only advanced users (admins always allowed)
+    const { data: user } = await supabase.from('users').select('plan,role').eq('id', req.user.id).single();
+    if (user.role !== 'admin' && user.plan !== 'advanced') return res.status(402).json({ error: 'Advanced plan required for Mock Interviews', code: 'UPGRADE_REQUIRED' });
 
     const scoringPrompt = `You are a senior DBA interviewer with 20+ years experience evaluating ${role} candidates.
 
