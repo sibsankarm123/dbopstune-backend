@@ -609,7 +609,7 @@ app.get('/api/admin/feedback', auth, adminOnly, async (req, res) => {
 // ── AI MOCK INTERVIEW SCORING ────────────────────────────────────────
 app.post('/api/mock-interview', auth, async (req, res) => {
   try {
-    const { role, question, answer, level } = req.body;
+    const { role, question, answer, level, type } = req.body;
     if (!question || !answer) return res.status(400).json({ error: 'Missing fields' });
 
     // Only advanced users (admins always allowed)
@@ -621,9 +621,23 @@ app.post('/api/mock-interview', auth, async (req, res) => {
       mid:    { yrs: '5-10 years (mid-level)', bar: 'Expect hands-on troubleshooting skill, real production experience, and the ability to reason through practical scenarios with specifics.' },
       senior: { yrs: '10-15 years (senior/architect)', bar: 'Expect architecture-level thinking, trade-off analysis, design for scale/HA/DR, risk management, and leadership. Hold the bar high; generic answers should score low.' }
     };
+    const TYPES = {
+      technical:    'TECHNICAL: Focus scoring on command-level accuracy, configuration detail, and correct technical reasoning.',
+      incident:     'PRODUCTION INCIDENT: Focus scoring on structured troubleshooting approach, specific diagnostic steps (commands, logs, tools), and speed of isolation.',
+      architecture: 'ARCHITECTURE: Focus scoring on design trade-offs, HA/DR considerations, scalability thinking, and justification of choices.',
+      performance:  'PERFORMANCE TUNING: Focus scoring on diagnostic methodology, specific metrics/wait events, tool usage, and root-cause thinking.',
+      migration:    'MIGRATION: Focus scoring on planning, risk mitigation, cutover strategy, validation approach, and rollback handling.',
+      rapidfire:    'RAPID FIRE: Expect a concise, accurate answer. Score heavily on correctness and precision; penalise waffle or vague answers.',
+      manager:      'MANAGER ROUND: Focus scoring on communication clarity, leadership thinking, stakeholder management, and real-world examples over raw technical depth.'
+    };
     const lvl = LEVELS[level] || LEVELS.mid;
+    const typeHint = TYPES[type] || TYPES.technical;
 
     const scoringPrompt = `You are a senior DBA interviewer with 20+ years experience evaluating a ${role} candidate at the ${lvl.yrs} experience level.
+
+Interview type: ${typeHint}
+
+Calibrate your scoring to this level: ${lvl.bar}
 
 Calibrate your scoring to this level: ${lvl.bar}
 
