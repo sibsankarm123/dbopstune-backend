@@ -107,7 +107,7 @@ app.post('/api/auth/register', authLimit, async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, plan: user.plan },
-      process.env.JWT_SECRET, { expiresIn: '7d' }
+      process.env.JWT_SECRET, { expiresIn: '24h' }
     );
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role } });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -129,7 +129,7 @@ app.post('/api/auth/login', authLimit, async (req, res) => {
 
     const token = jwt.sign(
       { id: user.id, email: user.email, role: user.role, plan: user.plan },
-      process.env.JWT_SECRET, { expiresIn: '7d' }
+      process.env.JWT_SECRET, { expiresIn: '24h' }
     );
     res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role } });
   } catch(e) { res.status(500).json({ error: e.message }); }
@@ -445,7 +445,7 @@ app.post('/api/payment/verify', auth, async (req, res) => {
 
     const token = require('jsonwebtoken').sign(
       { id: user.id, email: user.email, role: user.role, plan: planName },
-      process.env.JWT_SECRET, { expiresIn: '7d' }
+      process.env.JWT_SECRET, { expiresIn: '24h' }
     );
     res.json({
       success: true, plan: planName,
