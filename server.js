@@ -25,6 +25,10 @@ const PLANS = {
   advanced_yearly:  { amount: 399900, currency: 'INR', label: 'Advanced Yearly',  period: 'yearly',  plan_name: 'advanced' },
 };
 
+// Free (non-advanced) users get this many AI-scored mock interview answers, lifetime, before
+// they must upgrade to the Advanced plan for unlimited mock interviews.
+const FREE_MOCK_INTERVIEWS = 2;
+
 // Feature access by plan
 const PLAN_FEATURES = {
   free:     { ai_questions: 5, mock_interview: false, kb_full: true, migration_hub: false, resume_review: false },
@@ -99,7 +103,7 @@ app.post('/api/auth/register', authLimit, async (req, res) => {
     const hash = await bcrypt.hash(password, 12);
     const { data: user, error } = await supabase.from('users').insert({
       email, name, password_hash: hash,
-      role: 'user', plan: 'free', free_queries_used: 0,
+      role: 'user', plan: 'free', free_queries_used: 0, mock_interviews_used: 0,
       created_at: new Date().toISOString()
     }).select().single();
 
@@ -109,7 +113,7 @@ app.post('/api/auth/register', authLimit, async (req, res) => {
       { id: user.id, email: user.email, role: user.role, plan: user.plan },
       process.env.JWT_SECRET, { expiresIn: '24h' }
     );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role, free_queries_used: user.free_queries_used, mock_interviews_used: user.mock_interviews_used } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -131,7 +135,7 @@ app.post('/api/auth/login', authLimit, async (req, res) => {
       { id: user.id, email: user.email, role: user.role, plan: user.plan },
       process.env.JWT_SECRET, { expiresIn: '24h' }
     );
-    res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role } });
+    res.json({ token, user: { id: user.id, name: user.name, email: user.email, plan: user.plan, role: user.role, free_queries_used: user.free_queries_used, mock_interviews_used: user.mock_interviews_used } });
   } catch(e) { res.status(500).json({ error: e.message }); }
 });
 
@@ -139,7 +143,7 @@ app.post('/api/auth/login', authLimit, async (req, res) => {
 app.get('/api/auth/me', auth, async (req, res) => {
   try {
     const { data: user } = await supabase.from('users')
-      .select('id,name,email,plan,role,free_queries_used,created_at,last_login')
+      .select('id,name,email,plan,role,free_queries_used,mock_interviews_used,created_at,last_login')
       .eq('id', req.user.id).single();
     if (!user) return res.status(404).json({ error: 'Not found' });
     res.json(user);
@@ -431,7 +435,7 @@ app.post('/api/payment/verify', auth, async (req, res) => {
     const { data: user, error } = await supabase.from('users')
       .update({
         plan: planName, plan_expires_at: expires.toISOString(),
-        razorpay_order_id, razorpay_payment_id, free_queries_used: 0
+        razorpay_order_id, razorpay_payment_id, free_queries_used: 0, mock_interviews_used: 0
       })
       .eq('id', req.user.id).select().single();
     if (error) return res.status(500).json({ error: error.message });
@@ -612,9 +616,18 @@ app.post('/api/mock-interview', auth, async (req, res) => {
     const { role, question, answer, level, type } = req.body;
     if (!question || !answer) return res.status(400).json({ error: 'Missing fields' });
 
-    // Only advanced users (admins always allowed)
-    const { data: user } = await supabase.from('users').select('plan,role').eq('id', req.user.id).single();
-    if (user.role !== 'admin' && user.plan !== 'advanced') return res.status(402).json({ error: 'Advanced plan required for Mock Interviews', code: 'UPGRADE_REQUIRED' });
+    // Advanced plan + admins: unlimited. Everyone else gets FREE_MOCK_INTERVIEWS free
+    // AI-scored attempts (lifetime), then must upgrade to Advanced for unlimited use.
+    const { data: user } = await supabase.from('users')
+      .select('plan,role,mock_interviews_used').eq('id', req.user.id).single();
+    const isUnlimited = user.role === 'admin' || user.plan === 'advanced';
+    const usedSoFar = user.mock_interviews_used || 0;
+    if (!isUnlimited && usedSoFar >= FREE_MOCK_INTERVIEWS) {
+      return res.status(402).json({
+        error: `Free mock interview limit reached (${FREE_MOCK_INTERVIEWS}). Upgrade to Advanced for unlimited AI-scored mock interviews.`,
+        code: 'UPGRADE_REQUIRED'
+      });
+    }
 
     const LEVELS = {
       junior: { yrs: '0-5 years (junior)',  bar: 'Expect solid fundamentals and correct core concepts. Reward clear understanding; do not require deep architecture or large-scale production war stories.' },
@@ -685,7 +698,18 @@ Be honest and fair, judged against the ${lvl.yrs} bar. Score 8-10 only for genui
       created_at: new Date().toISOString()
     });
 
-    res.json(scores);
+    // Count this attempt against the free trial (unless unlimited)
+    let mockInterviewsUsed = usedSoFar;
+    if (!isUnlimited) {
+      mockInterviewsUsed = usedSoFar + 1;
+      await supabase.from('users').update({ mock_interviews_used: mockInterviewsUsed }).eq('id', req.user.id);
+    }
+
+    res.json({
+      ...scores,
+      mock_interviews_used: isUnlimited ? null : mockInterviewsUsed,
+      mock_interviews_left: isUnlimited ? null : Math.max(0, FREE_MOCK_INTERVIEWS - mockInterviewsUsed)
+    });
   } catch(e) {
     console.error('Mock interview error:', e.message);
     res.status(500).json({ error: e.message });
