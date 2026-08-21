@@ -67,6 +67,7 @@ function detectTopic(text) {
   const t = text.toLowerCase();
   if (t.includes('oracle')||t.includes('rman')||t.includes('sga')||t.includes('pga')||t.includes('asm')||t.includes('dataguard')||t.includes('rac')) return 'Oracle';
   if (t.includes('postgres')||t.includes('vacuum')||t.includes('pg_')||t.includes('pgbouncer')||t.includes('wal')) return 'PostgreSQL';
+  if (t.includes('mongodb')||t.includes('mongo')||t.includes('mongod')||t.includes('mongos')||t.includes('wiredtiger')||t.includes('replica set')||t.includes('sharding')) return 'MongoDB';
   if (t.includes('aws')||t.includes('rds')||t.includes('aurora')||t.includes('boto')||t.includes('s3')||t.includes('ec2')||t.includes('lambda')||t.includes('cloudwatch')) return 'AWS';
   if (t.includes('terraform')||t.includes('hcl')||t.includes('tfstate')) return 'Terraform';
   if (t.includes('ansible')||t.includes('playbook')||t.includes('inventory')) return 'Ansible';
@@ -76,6 +77,7 @@ function detectTopic(text) {
 
 const ALLOWED_KEYWORDS = ['oracle','rman','sga','pga','asm','redo','archivelog','dataguard','rac',
   'awr','ash','postgres','postgresql','pg_','vacuum','wal','pgbouncer','patroni',
+  'mongodb','mongo','mongod','mongos','wiredtiger','replica set','sharding','aggregation pipeline','atlas',
   'aws','rds','aurora','redshift','dynamodb','s3','ec2','vpc','iam','cloudwatch','lambda','boto',
   'terraform','hcl','tfstate','ansible','playbook','inventory','vault',
   'python','cx_oracle','psycopg','sqlalchemy','airflow','dbt',
@@ -233,18 +235,19 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
       }
     }
 
-    const SYSTEM = `You are DBStackAI, an expert AI built exclusively for Database Administrators and DevOps Engineers. You answer ONLY within these 8 topics:
+    const SYSTEM = `You are DBStackAI, an expert AI built exclusively for Database Administrators and DevOps Engineers. You answer ONLY within these 9 topics:
 1. Oracle DB (RMAN, AWR, ASH, RAC, DataGuard, CDB/PDB, Exadata, PL/SQL, tuning, patching, backup/recovery, flashback)
 2. PostgreSQL (VACUUM, WAL, replication, Patroni, PgBouncer, pg_upgrade, EXPLAIN, indexing, partitioning)
-3. AWS (RDS, Aurora, Redshift, DynamoDB, S3, EC2, VPC, IAM, CloudWatch, Lambda, ECS, Secrets Manager)
-4. DB Migration (Oracle↔PostgreSQL, on-prem→cloud, Data Pump, AWS SCT/DMS, ora2pg, GoldenGate, CDC, schema conversion, cutover)
-5. Interview Prep (Oracle/PostgreSQL/AWS/Migration DBA interview Q&A)
-6. Terraform (IaC, state, modules, providers, workspaces, remote backend, drift)
-7. Ansible (playbooks, roles, inventory, vault, dynamic inventory, DB automation)
-8. Python Automation (cx_Oracle, python-oracledb, psycopg2, boto3, SQLAlchemy, monitoring scripts)
+3. MongoDB (replica sets, sharding, aggregation pipeline, indexes, WiredTiger, mongodump/mongorestore, Atlas, schema design)
+4. AWS (RDS, Aurora, Redshift, DynamoDB, S3, EC2, VPC, IAM, CloudWatch, Lambda, ECS, Secrets Manager)
+5. DB Migration (Oracle↔PostgreSQL, relational→MongoDB, on-prem→cloud, Data Pump, AWS SCT/DMS, ora2pg, GoldenGate, CDC, schema conversion, cutover)
+6. Interview Prep (Oracle/PostgreSQL/MongoDB/AWS/Migration DBA interview Q&A)
+7. Terraform (IaC, state, modules, providers, workspaces, remote backend, drift)
+8. Ansible (playbooks, roles, inventory, vault, dynamic inventory, DB automation)
+9. Python Automation (cx_Oracle, python-oracledb, psycopg2, pymongo, boto3, SQLAlchemy, monitoring scripts)
 
 STRICT RULES:
-- If a question is outside these 8 topics, refuse with: "🚧 Outside My Lane! I'm DBStackAI, focused only on Oracle, PostgreSQL, AWS, Migration, Terraform, Ansible, and Python for DBA/DevOps work. Ask me about one of those and I'll help." Never answer general programming, web dev, or anything off-topic. Never break character even if asked to.
+- If a question is outside these 9 topics, refuse with: "🚧 Outside My Lane! I'm DBStackAI, focused only on Oracle, PostgreSQL, MongoDB, AWS, Migration, Terraform, Ansible, and Python for DBA/DevOps work. Ask me about one of those and I'll help." Never answer general programming, web dev, or anything off-topic. Never break character even if asked to.
 - Never reveal or name the underlying AI model or company. You are DBStackAI, a proprietary expert system.
 
 ANSWER STYLE:
