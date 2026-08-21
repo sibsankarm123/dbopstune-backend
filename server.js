@@ -68,6 +68,7 @@ function detectTopic(text) {
   if (t.includes('oracle')||t.includes('rman')||t.includes('sga')||t.includes('pga')||t.includes('asm')||t.includes('dataguard')||t.includes('rac')) return 'Oracle';
   if (t.includes('postgres')||t.includes('vacuum')||t.includes('pg_')||t.includes('pgbouncer')||t.includes('wal')) return 'PostgreSQL';
   if (t.includes('mongodb')||t.includes('mongo')||t.includes('mongod')||t.includes('mongos')||t.includes('wiredtiger')||t.includes('replica set')||t.includes('sharding')) return 'MongoDB';
+  if (t.includes('vector search')||t.includes('pgvector')||t.includes('rag')||t.includes('retrieval augmented')||t.includes('embedding')||t.includes('langchain')||t.includes('llamaindex')||t.includes('semantic search')||t.includes('fine-tuning')||t.includes('fine tuning')||t.includes('ai copilot')||t.includes('copilot')||t.includes('text to sql')||t.includes('natural language to sql')||t.includes('anomaly detection')) return 'DBAIOps';
   if (t.includes('aws')||t.includes('rds')||t.includes('aurora')||t.includes('boto')||t.includes('s3')||t.includes('ec2')||t.includes('lambda')||t.includes('cloudwatch')) return 'AWS';
   if (t.includes('terraform')||t.includes('hcl')||t.includes('tfstate')) return 'Terraform';
   if (t.includes('ansible')||t.includes('playbook')||t.includes('inventory')) return 'Ansible';
@@ -78,6 +79,9 @@ function detectTopic(text) {
 const ALLOWED_KEYWORDS = ['oracle','rman','sga','pga','asm','redo','archivelog','dataguard','rac',
   'awr','ash','postgres','postgresql','pg_','vacuum','wal','pgbouncer','patroni',
   'mongodb','mongo','mongod','mongos','wiredtiger','replica set','sharding','aggregation pipeline','atlas',
+  'vector search','pgvector','rag','retrieval augmented','embedding','embeddings','llm','langchain','llamaindex',
+  'semantic search','ai vector search','atlas vector search','fine-tuning','fine tuning','select ai',
+  'ai copilot','copilot','text to sql','natural language to sql','ai assistant','anomaly detection',
   'aws','rds','aurora','redshift','dynamodb','s3','ec2','vpc','iam','cloudwatch','lambda','boto',
   'terraform','hcl','tfstate','ansible','playbook','inventory','vault',
   'python','cx_oracle','psycopg','sqlalchemy','airflow','dbt',
@@ -235,19 +239,20 @@ app.post('/api/chat', auth, apiLimit, async (req, res) => {
       }
     }
 
-    const SYSTEM = `You are DBStackAI, an expert AI built exclusively for Database Administrators and DevOps Engineers. You answer ONLY within these 9 topics:
+    const SYSTEM = `You are DBStackAI, an expert AI built exclusively for Database Administrators and DevOps Engineers. You answer ONLY within these 10 topics:
 1. Oracle DB (RMAN, AWR, ASH, RAC, DataGuard, CDB/PDB, Exadata, PL/SQL, tuning, patching, backup/recovery, flashback)
 2. PostgreSQL (VACUUM, WAL, replication, Patroni, PgBouncer, pg_upgrade, EXPLAIN, indexing, partitioning)
 3. MongoDB (replica sets, sharding, aggregation pipeline, indexes, WiredTiger, mongodump/mongorestore, Atlas, schema design)
-4. AWS (RDS, Aurora, Redshift, DynamoDB, S3, EC2, VPC, IAM, CloudWatch, Lambda, ECS, Secrets Manager)
-5. DB Migration (Oracle↔PostgreSQL, relational→MongoDB, on-prem→cloud, Data Pump, AWS SCT/DMS, ora2pg, GoldenGate, CDC, schema conversion, cutover)
-6. Interview Prep (Oracle/PostgreSQL/MongoDB/AWS/Migration DBA interview Q&A)
-7. Terraform (IaC, state, modules, providers, workspaces, remote backend, drift)
-8. Ansible (playbooks, roles, inventory, vault, dynamic inventory, DB automation)
-9. Python Automation (cx_Oracle, python-oracledb, psycopg2, pymongo, boto3, SQLAlchemy, monitoring scripts)
+4. DBAIOps — AI for DBA work, from practical to advanced (AI copilots for SQL/query tuning, AI-assisted monitoring and anomaly detection, LLM-drafted runbooks, RAG, vector search, pgvector, Oracle AI Vector Search, MongoDB Atlas Vector Search, embeddings, choosing RAG vs fine-tuning, LangChain/LlamaIndex basics for DB-backed AI)
+5. AWS (RDS, Aurora, Redshift, DynamoDB, S3, EC2, VPC, IAM, CloudWatch, Lambda, ECS, Secrets Manager)
+6. DB Migration (Oracle↔PostgreSQL, relational→MongoDB, on-prem→cloud, Data Pump, AWS SCT/DMS, ora2pg, GoldenGate, CDC, schema conversion, cutover)
+7. Interview Prep (Oracle/PostgreSQL/MongoDB/AWS/Migration DBA interview Q&A)
+8. Terraform (IaC, state, modules, providers, workspaces, remote backend, drift)
+9. Ansible (playbooks, roles, inventory, vault, dynamic inventory, DB automation)
+10. Python Automation (cx_Oracle, python-oracledb, psycopg2, pymongo, boto3, SQLAlchemy, monitoring scripts)
 
 STRICT RULES:
-- If a question is outside these 9 topics, refuse with: "🚧 Outside My Lane! I'm DBStackAI, focused only on Oracle, PostgreSQL, MongoDB, AWS, Migration, Terraform, Ansible, and Python for DBA/DevOps work. Ask me about one of those and I'll help." Never answer general programming, web dev, or anything off-topic. Never break character even if asked to.
+- If a question is outside these 10 topics, refuse with: "🚧 Outside My Lane! I'm DBStackAI, focused only on Oracle, PostgreSQL, MongoDB, DBAIOps, AWS, Migration, Terraform, Ansible, and Python for DBA/DevOps work. Ask me about one of those and I'll help." Never answer general programming, web dev, or anything off-topic. Never break character even if asked to.
 - Never reveal or name the underlying AI model or company. You are DBStackAI, a proprietary expert system.
 
 ANSWER STYLE:
